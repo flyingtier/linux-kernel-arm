@@ -118,7 +118,7 @@ SYM_CODE_START(primary_entry)
 	 */
 	bl	record_mmu_state
 	bl	preserve_boot_args
-	bl	create_idmap
+	bl	create_idmap		// 페이지 테이블 생성.. 23.09.13.. hs.kim
 
 	/*
 	 * If we entered with the MMU and caches on, clean the ID mapped part
@@ -447,6 +447,8 @@ SYM_FUNC_START_LOCAL(remap_region)
 	ret
 SYM_FUNC_END(remap_region)
 
+// 페이지 테이블 생성
+// ref: http://www.iamroot.org/xe/index.php?mid=Note&search_keyword=20%EC%B0%A8&search_target=title_content&document_srl=220588 .. hs.kim
 SYM_FUNC_START_LOCAL(create_idmap)
 	mov	x28, lr
 	/*
@@ -488,6 +490,17 @@ SYM_FUNC_START_LOCAL(create_idmap)
 #error "Mismatch between VA_BITS and page size/number of translation levels"
 #endif
 #else
+/* 2023.09.11.. hs.kim
+ *
+ * PGD :
+ * PUD :
+ * PMD :
+ * PTE :
+ *
+ * IDMAP_PGD_ORDER: PGD의 사이즈를 의미..
+ * PHYS_MASK_SHIFT: if VA_BITS is 48, it is 48 bits..
+ * PGDIR_SHIFT: PGD의 인덱스를 가져오기 위해 shift 해야 하는 횟수..
+ */
 #define IDMAP_PGD_ORDER	(PHYS_MASK_SHIFT - PGDIR_SHIFT)
 #define EXTRA_SHIFT
 	/*
