@@ -37,6 +37,22 @@
 
 #include "efi-header.S"
 
+/* 2023.09.03.. hs.kim
+ * 참고 문서: http://jake.dothome.co.kr/head-64-60/
+ * Kernel Image 위치..
+ *
+ * from arch/arm64/include/memory.h
+ * PAGE_OFFSET: the virtual address of the start of the linear map, 
+ *		at the start of the TTBR1 address space.
+ * PAGE_END: the end of the linear map, where all other kernel mappings begin.
+ * KIMAGE_VADDR: the virtual address of the start of the kernel image.
+ * VA_BITS: the maximum number of bits for virtual addresses.
+ *
+ * TTBR1: Kernel space
+ * TTBR0: User space
+ *
+ * Kernel Image의 시작 virtual address가 2MB(0x1fffff)로 정렬되어 있어야 함.
+ */
 #if (PAGE_OFFSET & 0x1fffff) != 0
 #error PAGE_OFFSET must be at least 2MB aligned
 #endif
