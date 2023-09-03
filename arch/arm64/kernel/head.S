@@ -69,6 +69,12 @@
  * that are useful before the MMU is enabled. The allocations are described
  * in the entry routines.
  */
+
+/* 2023.09.03.. hs.kim
+ * from include/linux/init.h
+ * #define __HEAD		.section	".head.text","ax"
+ * __HEAD 이하의 코드 내용은 .head.text 메모리 섹션임을 의미한다.
+ */
 	__HEAD
 	/*
 	 * DO NOT MODIFY. Image header expected by Linux boot-loaders.
