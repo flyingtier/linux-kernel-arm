@@ -74,6 +74,8 @@
  * from include/linux/init.h
  * #define __HEAD		.section	".head.text","ax"
  * __HEAD 이하의 코드 내용은 .head.text 메모리 섹션임을 의미한다.
+ *
+ * about .sction link: https://developer.arm.com/documentation/100068/0612/migrating-from-armasm-to-the-armclang-integrated-assembler/sections
  */
 	__HEAD
 	/*
@@ -109,8 +111,11 @@
 	 *  x28        create_idmap()                           callee preserved temp register
 	 */
 SYM_CODE_START(primary_entry)
+	// record_mmu_state로 이동한다.		2023.09.03.. hs.kim
 	bl	record_mmu_state
+	// preserve_boot_args로 이동한다.	2023.09.03.. hs.kim
 	bl	preserve_boot_args
+	// create_idmap으로 이동한다.		2023.09.03.. hs.kim
 	bl	create_idmap
 
 	/*
@@ -145,6 +150,13 @@ SYM_CODE_START(primary_entry)
 	b	__primary_switch
 SYM_CODE_END(primary_entry)
 
+/* 2023.09.03.. hs.kim
+ * from include/linux/init.h
+ * #define __INIT		.section	".init.text","ax"
+ * __INIT 이하의 코드 내용은 .init.text 메모리 섹션임을 의미한다.
+ *
+ * about .section link: https://developer.arm.com/documentation/100068/0612/migrating-from-armasm-to-the-armclang-integrated-assembler/sections
+ */
 	__INIT
 SYM_CODE_START_LOCAL(record_mmu_state)
 	mrs	x19, CurrentEL
