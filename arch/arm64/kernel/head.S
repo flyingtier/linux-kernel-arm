@@ -111,11 +111,13 @@
 	 *  x28        create_idmap()                           callee preserved temp register
 	 */
 SYM_CODE_START(primary_entry)
-	// record_mmu_state로 이동한다.		2023.09.03.. hs.kim
+	/*
+	 * record_mmu_state에서 return 시 x19의 값이
+	 *	0이면, cache maintenance 필요
+	 *	1이면, cache maintenance 필요X
+	 */
 	bl	record_mmu_state
-	// preserve_boot_args로 이동한다.	2023.09.03.. hs.kim
 	bl	preserve_boot_args
-	// create_idmap으로 이동한다.		2023.09.03.. hs.kim
 	bl	create_idmap
 
 	/*
@@ -158,15 +160,80 @@ SYM_CODE_END(primary_entry)
  * about .section link: https://developer.arm.com/documentation/100068/0612/migrating-from-armasm-to-the-armclang-integrated-assembler/sections
  */
 	__INIT
+// ref : http://www.iamroot.org/xe/index.php?mid=Note&search_keyword=20%EC%B0%A8&search_target=title_content&document_srl=220561 .. hs.kim
 SYM_CODE_START_LOCAL(record_mmu_state)
-	mrs	x19, CurrentEL
-	cmp	x19, #CurrentEL_EL2
-	mrs	x19, sctlr_el1
-	b.ne	0f
-	mrs	x19, sctlr_el2
+	/* 2023.09.03.. hs.kim
+	 *
+	 * Current Exception Level
+	 * about CurrentEL link: https://developer.arm.com/documentation/ddi0595/2021-06/AArch64-Registers/CurrentEL--Current-Exception-Level
+	 * - EL0: 0b00
+	 * - EL1: 0b01
+	 * - EL2: 0b10
+	 * - EL3: 0b11
+	 * Accessing CurrentEL - Accesses to this register, use the following encodings in the System register encoding space
+	 * - MRS <Xt>, CurrentEL
+	 *
+	 * from include/asm/ptrace.h
+	 * Current Exception Level values, as contained in CurrentEL
+	 * #define CurrentEL_EL1		(1 << 2)	// 4
+	 * #define CurrentEL_EL2		(2 << 2)	// 8
+	 *
+	 * cmp instruction for arm64
+	 * about cmp instruction link: https://developer.arm.com/documentation/dui0801/g/A64-General-Instructions/CMP--immediate-
+	 * cmp 명령어는 SPSR_ELx[31:28]에 해당하는 N, Z, C, V flags를 수정한다.
+	 * cmp 명령어의 operand1, operand2가 같다면, Z flag가 1로 세팅되고, 다르면 z flag가 0으로 세팅된다.
+	 *  cf) cmp A, B는 A - B를 수행한 연산 결과를 바탕으로 flags를 수정한다.
+	 *
+	 * sctlr_elx - System Control Register ELx
+	 * about sctlr_EL1 link: https://developer.arm.com/documentation/ddi0601/2020-12/AArch64-Registers/SCTLR-EL1--System-Control-Register--EL1-
+	 *
+	 *
+	 * 동작 내용..
+	 * 1. CurrentEL(현재 Exception Level)을 x19 register에 저장
+	 * 2. x19 register에 저장된 현재 Exception Level이 CurrentEL_EL2인지 체크
+	 * 3. CurrentEL이 EL1이냐 EL2냐에 따라 x19 register에 해당 sctlr_elx(System Control Register for ELx)를 저장한다.
+	 */
+	mrs	x19, CurrentEL		// CurrentEL(현재 Exception Level)을 x19에 기록한다.
+	cmp	x19, #CurrentEL_EL2	// x19에 저장된 현재 Exception Level이 CurrentEL_EL2 인지 확인.
+	mrs	x19, sctlr_el1		// sctlr_el1(System Control Register for EL1)을 x19에 기록한다.
+	b.ne	0f			// 만약 CurrentEL이 EL1이라면, 뒤에 나오는 label 0: 으로 이동
+	mrs	x19, sctlr_el2		// sctlr_el2(System Control Register for EL2)을 x19에 기록한다. 이 경우는 EL2의 경우에만 해당됨.
+
+/* 2023.09.03.. hs.kim
+ *
+ * CPU_LE, CPU_BE
+ * kernel config에 little endian으로 설정되어 있으면, CPU_LE()의 내부 코드가 실행된다.
+ * kernel config에 big endian으로 설정되어 있으면, CPU_BE()의 내부 코드가 실행된다.
+ *
+ * tbnz - Test bit and Branch if Non zero.
+ * tbnz link: https://developer.arm.com/documentation/100069/0610/A64-General-Instructions/TBNZ?lang=en
+ *
+ * tbz - Test bit and Branch if zero.
+ * tbz link: https://developer.arm.com/documentation/100069/0610/A64-General-Instructions/TBZ?lang=en
+ *
+ * SCTLR_ELx_EE_SHIFT
+ * from arch/arm64/include/asm/sysreg.h
+ * #define SCTLR_ELx_EE_SHIFT	25
+ *
+ * tst.. CPSR flags: = Rn AND Op2
+ * tst x19, #SCTLR_ELx_C.. x19와 #SCTLR_ELx_C(SCTLR_ELx[2].. C bit)... 이건 다음에 다시.. 보기..
+ *
+ * and.. Rd: = Rn AND Op2
+ * and x19, x19, #SCTLR_ELx_M.. x19와 #SCTLR_ELx_M(SCTLR_ELx[0])을 and 한 값을 x19에 저장.. x19에 0이 저장될 듯..
+ *
+ * csel.. ???
+ *
+ * ret: return..
+ *
+ * 동작 내용..
+ * 1. kernel config가 little endian인 경우, EE bit가 0이면,
+ * 2. SCTLR_ELx_C bit가 0이라면, Z flag를 1로 설정..
+ * 3. ...
+ * 4. Z flag가 1이면, x19 register clear..
+ */
 0:
-CPU_LE( tbnz	x19, #SCTLR_ELx_EE_SHIFT, 1f	)
-CPU_BE( tbz	x19, #SCTLR_ELx_EE_SHIFT, 1f	)
+CPU_LE( tbnz	x19, #SCTLR_ELx_EE_SHIFT, 1f	)	// little endian인 경우 EE bit가 0이 아니면, 예외처리를 위해 앞으로 나올 label 1:로 이동
+CPU_BE( tbz	x19, #SCTLR_ELx_EE_SHIFT, 1f	)	// big endian인 경우 EE bit가 0이면, 예외처리를 위해 앞으로 나올 label 1:로 이동
 	tst	x19, #SCTLR_ELx_C		// Z := (C == 0)
 	and	x19, x19, #SCTLR_ELx_M		// isolate M bit
 	csel	x19, xzr, x19, eq		// clear x19 if Z
