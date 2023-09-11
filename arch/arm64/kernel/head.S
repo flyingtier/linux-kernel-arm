@@ -261,9 +261,24 @@ SYM_CODE_END(record_mmu_state)
 /*
  * Preserve the arguments passed by the bootloader in x0 .. x3
  */
+// ref: http://www.iamroot.org/xe/index.php?mid=Note&search_keyword=20%EC%B0%A8&search_target=title_content&document_srl=220569 .. hs.kim
 SYM_CODE_START_LOCAL(preserve_boot_args)
+	/* 2023.09.11.. hs.kim
+	 *
+	 * x0에 저장된 DTB의 시작 주소를 x21에 저장한다.
+	 * DTB와 FDT의 차이는 뭐지??
+	 */
 	mov	x21, x0				// x21=FDT
 
+	/* 2023.09.11.. hs.kim
+	 *
+	 * x0에 boot_args 주소를 저장한다.
+	 * extern u64 __cacheline_aligned boot_args[4] : 4개의 index를 갖는 배열, global variable
+	 *
+	 * arm64에서는 심볼의 주소를 가져올 때, 이런 식(adr_l)으로 동작한다.
+	 * adr_l : arch/arm64/include/asm/assembler.h
+	 * boot_args : arch/arm64/include/asm/setup.c
+	 */
 	adr_l	x0, boot_args			// record the contents of
 	stp	x21, x1, [x0]			// x0 .. x3 at kernel entry
 	stp	x2, x3, [x0, #16]
