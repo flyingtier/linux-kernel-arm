@@ -164,7 +164,7 @@ SYM_CODE_END(primary_entry)
 
 // ref : http://www.iamroot.org/xe/index.php?mid=Note&search_keyword=20%EC%B0%A8&search_target=title_content&document_srl=220561 .. hs.kim
 /* 2023.10.14.. hs.kim
- * record_mmu_state는 x19 값을 0 또는 1로 설정하고 리턴한다.
+ * record_mmu_state는 Cache On/Off 상태, MMU On/Off 상태에 따라 x19 값을 0 또는 1로 설정하고 리턴한다.
  * 이 과정에서 Endian이 잘못 설정되어 있는 경우, 시스템 레지스터 값을 바로 잡는 예외처리 루틴을 실행한다.
  * x19 값은 이후, preserve_boot_args에서 cache_invalidation 처리 여부와 관여된다.
  *      x19 == 1 : cache on / mmu on - skip cache invalidation
@@ -227,28 +227,38 @@ SYM_CODE_START_LOCAL(record_mmu_state)
  * #define SCTLR_ELx_EE_SHIFT	25
  *
  * tst.. CPSR flags: = Rn AND Op2
- * tst x19, #SCTLR_ELx_C.. x19와 #SCTLR_ELx_C(SCTLR_ELx[2].. C bit)... 이건 다음에 다시.. 보기..
+ * tst는 and 연산을 수행하고, 연산 결과 값이 0이면, Z flag는 1, 연산 결과 값이 1이면 Z flag는 0으로 설정된다.
+ *      tst x19, #SCTLR_ELx_C.. x19와 #SCTLR_ELx_C(SCTLR_ELx[2].. C(Cacheability) bit)
+ *      x19 레지스터에 기록된 시스템 레지스터의 값 중, C bit가 1인지 확인해 CPSR(N,Z,C,V) flag 값을 수정한다.
+ *      만약 C bit가 1이라면, CPSR의 Z flag는 0이 되고, C bit가 0이라면 Z flag는 1이된다.
+ *      ** 현재 Cache가 On 상태이면 Z flag는 0이 되고, Off라면 Z flag는 1이 된다.
  *
  * and.. Rd: = Rn AND Op2
- * and x19, x19, #SCTLR_ELx_M.. x19와 #SCTLR_ELx_M(SCTLR_ELx[0])을 and 한 값을 x19에 저장.. x19에 0이 저장될 듯..
+ * and x19, x19, #SCTLR_ELx_M.. x19와 #SCTLR_ELx_M(SCTLR_ELx[0].. M(MMU 설정) bit)을 and 한 값을 x19에 저장.. 
+ *      ** 현재 MMU 활성화라면 0, MMU 비활성화라면 1이 x19에 저장된다.
  *
- * csel.. ???
+ * csel.. Conditional select, returning the first or second input. (C언어의 3항 연산자..)
+ * CSEL  Xd, Xn, Xm, cond    ; 64-bit general registers
+ *      CPSR의 Z bit cond(ition)에 따라 Xd에 Xn 또는 Xm을 저장.
  *
  * ret: return..
  *
  * 동작 내용..
  * 1. kernel config가 little endian인 경우, EE bit가 0이면,
- * 2. SCTLR_ELx_C bit가 0이라면, Z flag를 1로 설정..
- * 3. ...
- * 4. Z flag가 1이면, x19 register clear..
+ * 2. SCTLR_ELx_C bit(Cacheability)가 0(Cache Off)이라면, Z flag를 1로 설정..
+ * 3. SCTLR_ELx_M bit(MMU 설정)가 활성화라면 0, 비활성화라면 1이 x19에 저장된다.
+ * 4. 2번의 tst 연산 결과로 설정된 Z flag에 따라 x19 값 설정. Z:1이면 x19에 xzr(clear)값을, Z:0이면 x19에 x19 값을 저장.
+ *      ** Z bit가 1(Cache가 Off 상태)이라면, MMU 상태와 상관 없이 x19 clear로 0이 저장된다.
  */
 0:
-CPU_LE( tbnz	x19, #SCTLR_ELx_EE_SHIFT, 1f	)	// little endian인 경우 EE bit가 0이 아니면, 예외처리를 위해 앞으로 나올 label 1:로 이동
-CPU_BE( tbz	x19, #SCTLR_ELx_EE_SHIFT, 1f	)	// big endian인 경우 EE bit가 0이면, 예외처리를 위해 앞으로 나올 label 1:로 이동
-	tst	x19, #SCTLR_ELx_C		// Z := (C == 0)
-	and	x19, x19, #SCTLR_ELx_M		// isolate M bit
-	csel	x19, xzr, x19, eq		// clear x19 if Z
-	ret
+CPU_LE( tbnz	x19, #SCTLR_ELx_EE_SHIFT, 1f	)	// little endian인 경우 x19에 저장된 시스템 레지스터의 EE bit가 0(little endian)이 아니면, 예외처리를 위해 forward label 1:로 이동
+CPU_BE( tbz	x19, #SCTLR_ELx_EE_SHIFT, 1f	)	// big endian인 경우 x19에 저장된 시스템 레지스터의 EE bit가 0(little endian)이면, 예외처리를 위해 forward label 1:로 이동
+	tst	x19, #SCTLR_ELx_C		        // Z := (C == 0).. x19에 저장된 시스템 레지스터의 C(Cacheability) bit를 확인 및 CPSR N bit 설정
+	and	x19, x19, #SCTLR_ELx_M		        // isolate M bit.. x19에 저장된 시스템 레지스터의 값 중 M(MMU 설정) bit만 남긴 값을 x19에 저장한다.. x19에 1이 저장됨..
+	csel	x19, xzr, x19, eq		        // clear x19 if Z.. eq 조건에 부합한다면 x19에 xzr(clear) 값을, 그렇지 않다면 x19값을 x19레지스터에 저장한다.
+	ret             // return to primary_entry..
+
+        // 이하 record_mmu_state 함수 부분은 예외처리..
 
 	/*
 	 * Set the correct endianness early so all memory accesses issued
