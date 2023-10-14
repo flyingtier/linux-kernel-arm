@@ -73,7 +73,7 @@
 /* 2023.09.03.. hs.kim
  * from include/linux/init.h
  * #define __HEAD		.section	".head.text","ax"
- * __HEAD 이하의 코드 내용은 .head.text 메모리 섹션임을 의미한다.
+ * __HEAD 이후의 코드는 ax속성(a:allocation, x:execution)을 가진 섹션 ".head.text"에 위치하도록 컴파일러에 지시한다.
  *
  * about .sction link: https://developer.arm.com/documentation/100068/0612/migrating-from-armasm-to-the-armclang-integrated-assembler/sections
  */
