@@ -111,7 +111,7 @@
 	 *  x28        create_idmap()                           callee preserved temp register
 	 */
 SYM_CODE_START(primary_entry)
-	/*
+	/* 2023.10.14.. hs.kim
 	 * record_mmu_state에서 return 시 x19의 값이
 	 *	0이면, cache maintenance 필요
 	 *	1이면, cache maintenance 필요X
@@ -150,6 +150,7 @@ SYM_CODE_START(primary_entry)
 #endif
 	bl	__cpu_setup			// initialise processor
 	b	__primary_switch
+
 SYM_CODE_END(primary_entry)
 
 /* 2023.09.03.. hs.kim
@@ -160,7 +161,17 @@ SYM_CODE_END(primary_entry)
  * about .section link: https://developer.arm.com/documentation/100068/0612/migrating-from-armasm-to-the-armclang-integrated-assembler/sections
  */
 	__INIT
+
 // ref : http://www.iamroot.org/xe/index.php?mid=Note&search_keyword=20%EC%B0%A8&search_target=title_content&document_srl=220561 .. hs.kim
+/* 2023.10.14.. hs.kim
+ * record_mmu_state는 x19 값을 0 또는 1로 설정하고 리턴한다.
+ * 이 과정에서 Endian이 잘못 설정되어 있는 경우, 시스템 레지스터 값을 바로 잡는 예외처리 루틴을 실행한다.
+ * x19 값은 이후, preserve_boot_args에서 cache_invalidation 처리 여부와 관여된다.
+ *      x19 == 1 : cache on / mmu on - skip cache invalidation
+ *      x19 == 0 : cache on / mmu off - operate cache invalidation
+ *      x19 == 0 : cache off / mmu on - operate cache invalidation
+ *      x19 == 0 : cache off / mmu off - operate cache invalidation
+ */
 SYM_CODE_START_LOCAL(record_mmu_state)
 	/* 2023.09.03.. hs.kim
 	 *
@@ -193,11 +204,11 @@ SYM_CODE_START_LOCAL(record_mmu_state)
 	 * 2. x19 register에 저장된 현재 Exception Level이 CurrentEL_EL2인지 체크
 	 * 3. CurrentEL이 EL1이냐 EL2냐에 따라 x19 register에 해당 sctlr_elx(System Control Register for ELx)를 저장한다.
 	 */
-	mrs	x19, CurrentEL		// CurrentEL(현재 Exception Level)을 x19에 기록한다.
-	cmp	x19, #CurrentEL_EL2	// x19에 저장된 현재 Exception Level이 CurrentEL_EL2 인지 확인.
-	mrs	x19, sctlr_el1		// sctlr_el1(System Control Register for EL1)을 x19에 기록한다.
-	b.ne	0f			// 만약 CurrentEL이 EL1이라면, 뒤에 나오는 label 0: 으로 이동
-	mrs	x19, sctlr_el2		// sctlr_el2(System Control Register for EL2)을 x19에 기록한다. 이 경우는 EL2의 경우에만 해당됨.
+	mrs	x19, CurrentEL		    // CurrentEL(현재 Exception Level)을 x19에 기록한다.
+	cmp	x19, #CurrentEL_EL2	    // x19에 저장된 현재 Exception Level이 CurrentEL_EL2 인지 확인.
+	mrs	x19, sctlr_el1		    // sctlr_el1(System Control Register for EL1)을 x19에 기록한다.
+	b.ne	0f			        // 만약 CurrentEL이 EL1이라면, 뒤에 나오는 label 0: 으로 이동
+	mrs	x19, sctlr_el2		    // sctlr_el2(System Control Register for EL2)을 x19에 기록한다. 이 경우는 EL2의 경우에만 해당됨.
 
 /* 2023.09.03.. hs.kim
  *
