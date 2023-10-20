@@ -285,26 +285,45 @@ SYM_CODE_END(record_mmu_state)
 // ref: http://www.iamroot.org/xe/index.php?mid=Note&search_keyword=20%EC%B0%A8&search_target=title_content&document_srl=220569 .. hs.kim
 SYM_CODE_START_LOCAL(preserve_boot_args)
 	/* 2023.09.11.. hs.kim
-	 *
-	 * x0에 저장된 DTB의 시작 주소를 x21에 저장한다.
-	 * DTB와 FDT의 차이는 뭐지??
-	 */
-	mov	x21, x0				// x21=FDT
+         *
+         * x0에 저장된 DTB의 시작 주소를 x21에 저장한다.
+         * DTB와 FDT의 차이는 뭐지??
+         */
+	mov	x21, x0				// x21=FDT.. x21에 x0(FDT의 주소)를 저장
 
-	/* 2023.09.11.. hs.kim
+	/* 2023.10.15.. hs.kim
 	 *
 	 * x0에 boot_args 주소를 저장한다.
-	 * extern u64 __cacheline_aligned boot_args[4] : 4개의 index를 갖는 배열, global variable
-	 *
+	 * extern u64 __cacheline_aligned boot_args[4] : 8바이트 데이터 4개의 index를 갖는 배열, global variable
+         *
+         * adr_l 매크로..
 	 * arm64에서는 심볼의 주소를 가져올 때, 이런 식(adr_l)으로 동작한다.
 	 * adr_l : arch/arm64/include/asm/assembler.h
 	 * boot_args : arch/arm64/include/asm/setup.c
+         *
+         * stp instruction for arm64
+         * Save the two registers specified into memory address of Xn or SP
+         * <imm> is signed immediate byte offset, a  multiple of 8 in the range -512 to 504
+         *      ex) stp Xt1, Xt2, [Xn|SP], #<imm>
+         *          stp x21, x1, [x0]   // x0에 저장된 주소위치에 x21, x1을 순서대로 저장하라.
+         * 두 번의 stp 명령을 수행해 boot_args의 0번째 인덱스에 FDT주소, 1~3번째 인덱스에 0이 저장된다.
+         *
+         * cbnz instruction..
+         * Conditional branches change the flow of execution depending on the current state of the condition flags or the value in a general-purpose register.
+         * Compare and Branch if non-zero..
+         *      ex) cbnz x19, 0f        // x19가 0이 아니면, forward 0 레이블로 branch..
+         *                              // record_mmu_state에서 x19가 0으로 설정되어 있음.
+         *
+         *
+         * 부터로더가 전달해준 x0~x3 레지스터들을 boot_arg에 저장한다.
+         * x0 레지스터는 DTB 주소로 사용되고, 나머지는 추후 사용하기 위해 예약해 둔다.
+	 *
 	 */
 	adr_l	x0, boot_args			// record the contents of
-	stp	x21, x1, [x0]			// x0 .. x3 at kernel entry
-	stp	x2, x3, [x0, #16]
+	stp	x21, x1, [x0]			// x0 .. x3 at kernel entry.. x0에 저장된 주소 위치에 x21, x1의 값을 순서대로 저장
+	stp	x2, x3, [x0, #16]               // x0에 저장된 주소에서 16만큼 떨어진 위치(8바이트 2개)에 x2, x3의 값을 순서대로 저장
 
-	cbnz	x19, 0f				// skip cache invalidation if MMU is on
+	cbnz	x19, 0f				// skip cache invalidation if MMU is on.. x19가 0이 아니면, forward 0 레이블로 branch..
 	dmb	sy				// needed before dc ivac with
 						// MMU off
 
